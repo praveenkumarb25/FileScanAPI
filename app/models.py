@@ -23,9 +23,15 @@ class UserInDB(User):
 class Login(BaseModel):
     username: str
     password: str
+    duration: str
 
 class Scan(BaseModel):
     time: str
     #username: Optional[str] = None
     is_infected : bool
     infected_by : Optional[str] = None
+
+class TokenResponse(BaseModel):
+    token_type: str
+    access_token: str
+    expires_in_minutes: int

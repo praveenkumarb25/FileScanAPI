@@ -4,7 +4,6 @@ from passlib.context import CryptContext
 
 SECRET_KEY = urlsafe_b64encode(os.urandom(32)).decode('utf-8')
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 fake_users_db = {
     "johndoe": {

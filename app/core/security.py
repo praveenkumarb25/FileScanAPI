@@ -17,12 +17,25 @@ def get_user(db, username: str):
         user_dict = db[username]
         return UserInDB(**user_dict)
 
-def create_access_token(data: dict, expires_delta: timedelta = timedelta(minutes=15)):
+def create_access_token(data: dict, duration: str):
+    duration_mapping = {
+        "1d": timedelta(days=1),
+        "1w": timedelta(weeks=1),
+        "1m": timedelta(days=30),  # Approximate a month
+        "1y": timedelta(days=365),
+    }
+    
+    if duration not in duration_mapping:
+        raise ValueError("Invalid duration. Choose from '1d', '1w', '1m', or '1y'.")
+
+    expires_delta = duration_mapping[duration]
     to_encode = data.copy()
     expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
+    
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    remaining_time = int((expire - datetime.utcnow()).total_seconds() / 60)  # Convert seconds to minutes
+    remaining_time = int((expire - datetime.utcnow()).total_seconds() / 60)  # Convert to minutes
+    
     return encoded_jwt, remaining_time
 
 def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl="token"))):
