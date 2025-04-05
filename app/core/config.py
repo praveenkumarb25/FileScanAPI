@@ -3,6 +3,7 @@ from base64 import urlsafe_b64encode
 from passlib.context import CryptContext
 import boto3
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load AWS credentials
 load_dotenv(dotenv_path="app/core/.env")
@@ -28,3 +29,24 @@ def get_user_from_db(username: str):
     )
     items = response.get("Items", [])
     return items[0] if items else None
+def update_token_metadata(username: str, success: bool, expire_time: str = ""):
+    user = get_user_from_db(username)
+    if not user:
+        return
+
+    updates = {
+        "token_last_used": datetime.utcnow().isoformat()
+    }
+
+    if success:
+        updates["token_created"] = datetime.utcnow().isoformat()
+        updates["token_expiration"] = expire_time
+        updates["token_failed"] = 0
+    else:
+        updates["token_failed"] = int(user.get("token_failed", 0)) + 1
+
+    table.update_item(
+        Key={"id": user["id"]},  # Assumes 'id' is the partition key
+        UpdateExpression="SET " + ", ".join(f"{k} = :{k}" for k in updates),
+        ExpressionAttributeValues={f":{k}": v for k, v in updates.items()}
+    )

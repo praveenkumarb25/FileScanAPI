@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, status
 from app.core.security import create_access_token, verify_password
 from app.models import Login, TokenResponse
 from pydantic import ValidationError
-from app.core.config import get_user_from_db  # ← Add this
+from app.core.config import get_user_from_db, update_token_metadata  # ✅ Add update function
+from datetime import datetime, timedelta
 
 router = APIRouter()
 ACCESS_TOKEN_EXPIRE_MINUTES = 10
@@ -18,9 +19,10 @@ async def login(login_data: dict):
             detail=", ".join(error_messages)
         )
 
-    # 🔄 Replace fake DB with actual DB lookup
+    # 🔄 Actual DB lookup
     user = get_user_from_db(login.username)
     if user is None or not verify_password(login.password, user["password"]):
+        update_token_metadata(login.username, success=False)  # ⛔ On failure
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
@@ -28,11 +30,17 @@ async def login(login_data: dict):
 
     user_roles = user.get("roles", [])
 
-    # 🪪 Generate access token
+    # ✅ Generate access token
     access_token, expires_in_minutes = create_access_token(
         data={"sub": login.username, "roles": user_roles},
         duration=login.duration
     )
+
+    # 🕒 Calculate token expiration time
+    expire_time = (datetime.utcnow() + timedelta(minutes=expires_in_minutes)).isoformat()
+
+    # ✅ Update token metadata in DynamoDB
+    update_token_metadata(login.username, success=True, expire_time=expire_time)
 
     return {
         "token_type": "bearer",
