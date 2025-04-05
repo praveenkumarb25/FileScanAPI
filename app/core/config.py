@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 
 # Load AWS credentials
-load_dotenv(dotenv_path="app/core/.env")
+load_dotenv(dotenv_path="app/.env")
 # AWS setup
 dynamodb = boto3.resource(
     'dynamodb',
