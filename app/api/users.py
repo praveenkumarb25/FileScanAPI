@@ -4,9 +4,6 @@ from app.models import User
 
 router = APIRouter()
 
-@router.get("/")
-async def health_check():
-    return {"status": "ok"}
 
 @router.get("/me", response_model=User)
 async def read_users_me(user: User = Depends(get_current_user)):

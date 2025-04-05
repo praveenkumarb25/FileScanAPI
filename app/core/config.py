@@ -1,25 +1,30 @@
 import os
 from base64 import urlsafe_b64encode
 from passlib.context import CryptContext
+import boto3
+from dotenv import load_dotenv
 
-SECRET_KEY = urlsafe_b64encode(os.urandom(32)).decode('utf-8')
+# Load AWS credentials
+load_dotenv(dotenv_path="app/core/.env")
+# AWS setup
+dynamodb = boto3.resource(
+    'dynamodb',
+    region_name="ap-south-1",
+    aws_access_key_id="AKIAZOZQFUTQVM4JTEBN",
+    aws_secret_access_key="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"
+)
+users = os.getenv("DYNAMODB_USERS_TABLE")  # Default to 'users' if not set
+table = dynamodb.Table(users)
+
+SECRET_KEY = urlsafe_b64encode(os.urandom(32)).decode('utf-8')  # Use a fixed one in production
 ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": pwd_context.hash("password123"),
-        "disabled": False,
-        "roles": ["user"]
-    },
-    "admin": {
-        "username": "admin",
-        "full_name": "Admin User",
-        "email": "admin@example.com",
-        "hashed_password": pwd_context.hash("adminpass"),
-        "disabled": False,
-        "roles": ["user", "admin"]
-    }
-}
+
+# Function to get user from DynamoDB
+def get_user_from_db(username: str):
+    response = table.scan(
+        FilterExpression="username = :u",
+        ExpressionAttributeValues={":u": username}
+    )
+    items = response.get("Items", [])
+    return items[0] if items else None

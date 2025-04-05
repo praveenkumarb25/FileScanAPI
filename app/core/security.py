@@ -5,17 +5,21 @@ from passlib.context import CryptContext
 from typing import List
 from app.models import TokenData, User, UserInDB
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from app.core.config import SECRET_KEY, ALGORITHM, fake_users_db
+from app.core.config import SECRET_KEY, ALGORITHM
+from app.core.config import get_user_from_db  # 👉 Import the real DB fetch
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_user(db, username: str):
-    if username in db:
-        user_dict = db[username]
+# 🔄 Replaced fake db access with a real DB call
+def get_user(username: str):
+    user_dict = get_user_from_db(username)
+    print(user_dict)
+    if user_dict:
         return UserInDB(**user_dict)
+    return None
 
 def create_access_token(data: dict, duration: str):
     duration_mapping = {
@@ -53,7 +57,9 @@ def get_current_user(token: str = Depends(OAuth2PasswordBearer(tokenUrl="token")
         token_data = TokenData(username=username, roles=roles)
     except JWTError:
         raise credentials_exception
-    user = get_user(fake_users_db, username=token_data.username)
+
+    # ✅ Now fetch from real DB
+    user = get_user(username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
