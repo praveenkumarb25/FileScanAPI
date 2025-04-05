@@ -53,3 +53,12 @@ class TokenResponse(BaseModel):
     token_type: str
     access_token: str
     expires_in_minutes: int
+
+class RegisteredUserResponse(BaseModel):
+    id: str
+    username: str
+    roles: List[str]
+    token_created: Optional[str]
+    token_expiration: Optional[str]
+    token_failed: int
+    token_last_used: Optional[str]
