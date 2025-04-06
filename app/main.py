@@ -73,7 +73,7 @@ logging.info("✅ Logging system initialized.")
 # Create FastAPI app
 app = FastAPI()
 
-SENSITIVE_KEYS = {"password", "token", "access_token", "refresh_token", "secret"}
+SENSITIVE_KEYS = {"password", "token", "access_token", "refresh_token", "secret", "authorization"}
 
 
 def redact_sensitive(data):
