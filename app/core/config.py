@@ -4,7 +4,11 @@ from passlib.context import CryptContext
 import boto3
 from dotenv import load_dotenv
 from datetime import datetime
-
+import warnings
+warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
+import logging
+logging.getLogger("passlib").setLevel(logging.ERROR)
+logging.getLogger("bcrypt").setLevel(logging.ERROR)
 # Load AWS credentials
 load_dotenv(dotenv_path="app/.env")
 # AWS setup

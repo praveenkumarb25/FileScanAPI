@@ -6,6 +6,7 @@ from app.core.config import get_user_from_db, update_token_metadata  # ✅ Add u
 from datetime import datetime, timedelta
 
 router = APIRouter()
+ACCESS_TOKEN_EXPIRE_MINUTES = 10
 
 @router.post("/token", response_model=TokenResponse)
 async def login(login_data: dict):
