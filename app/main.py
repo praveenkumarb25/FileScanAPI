@@ -10,6 +10,10 @@ import warnings
 from logging import StreamHandler
 from dotenv import load_dotenv
 import botocore.exceptions
+from slowapi.middleware import SlowAPIMiddleware
+from app.core.utils import limiter
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
 
 # Load environment variables from .env file
 load_dotenv(dotenv_path="app/.env")
@@ -161,7 +165,15 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 # Add middleware
 app.add_middleware(LoggingMiddleware)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 
 # Include all API routers
 from app.api.routes import router as api_router
 app.include_router(api_router)
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Please try again in a moment."},
+    )

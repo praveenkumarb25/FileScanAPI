@@ -6,6 +6,8 @@ import subprocess
 import logging
 import time
 import re
+from app.core.utils import limiter
+from fastapi import Request 
 
 # Configure logger
 logs_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
@@ -69,7 +71,8 @@ def scan_file(file_path: str) -> tuple[bool, str]:
         raise HTTPException(status_code=500, detail=f"Error scanning file: {e}")
 
 @router.post("/", response_model=Scan)
-async def scan_file_endpoint(file: UploadFile = File(...), user: str = Depends(get_current_user)) -> Scan:
+@limiter.limit("5/minute")  # Rate limiting
+async def scan_file_endpoint(request:Request, file: UploadFile = File(...), user: str = Depends(get_current_user)) -> Scan:
     # Save the uploaded file temporarily
     file_location = f"/tmp/{file.filename}"
     with open(file_location, "wb") as f:
