@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Request
 from app.core.security import get_current_user
 from app.models import Scan
+from app.core.utils import limiter
+
 import os
 import subprocess
 import logging
@@ -8,8 +10,8 @@ import time
 import re
 import uuid
 import magic  # pip install python-magic
-from app.core.utils import limiter
 
+# Initialize router
 router = APIRouter()
 
 # Setup logging
@@ -25,10 +27,17 @@ logging.basicConfig(
 )
 
 def parse_virus_name(output: str) -> str | None:
+    """
+    Extracts virus name from ClamAV output.
+    """
     match = re.search(r'(?<=: )(.+?)(?= FOUND)', output)
     return match.group(1).strip() if match else None
 
 def scan_file(file_path: str) -> tuple[bool, str]:
+    """
+    Scans the file using ClamAV.
+    Returns tuple (infected: bool, virus_name: str).
+    """
     try:
         logging.info(f"Scanning file: {file_path}")
         result = subprocess.run(
@@ -38,21 +47,21 @@ def scan_file(file_path: str) -> tuple[bool, str]:
             text=True
         )
 
-        scan_result = result.stdout + result.stderr
-        logging.debug(f"Scan result:\n{scan_result}")
+        output = result.stdout + result.stderr
+        logging.debug(f"ClamAV scan output:\n{output}")
 
         if result.returncode == 0:
-            logging.info(f"File clean: {file_path}")
+            logging.info(f"File is clean: {file_path}")
             return False, None
         elif result.returncode == 1:
-            virus_name = parse_virus_name(scan_result)
-            logging.warning(f"Infected file: {file_path} | Virus: {virus_name}")
+            virus_name = parse_virus_name(output)
+            logging.warning(f"Malware detected in {file_path}: {virus_name}")
             return True, virus_name
         else:
-            raise RuntimeError(f"ClamAV error (code {result.returncode}): {scan_result}")
+            raise RuntimeError(f"ClamAV scan failed (code {result.returncode}): {output}")
 
     except Exception as e:
-        logging.error(f"Scan failed: {e}")
+        logging.error(f"Scanning error: {e}")
         raise HTTPException(status_code=500, detail=f"Error scanning file: {str(e)}")
 
 @router.post("/", response_model=Scan)
@@ -62,34 +71,35 @@ async def scan_file_endpoint(
     file: UploadFile = File(...),
     user: str = Depends(get_current_user)
 ) -> Scan:
-    try:
-        # Generate a safe unique file path
-        unique_id = uuid.uuid4().hex
-        temp_filename = f"{unique_id}_{file.filename}"
-        file_location = os.path.join("/tmp", temp_filename)
+    """
+    Endpoint to scan uploaded files.
+    Supports all file types.
+    """
+    unique_id = uuid.uuid4().hex
+    safe_filename = f"{unique_id}_{file.filename}"
+    file_location = os.path.join("/tmp", safe_filename)
 
-        # Save uploaded file
+    try:
+        # Save uploaded file to disk
         with open(file_location, "wb") as f:
             f.write(await file.read())
 
-        # Optional: Log file type
+        # Detect MIME type
         mime = magic.Magic(mime=True)
         mime_type = mime.from_file(file_location)
-        logging.info(f"Received file: {file.filename} | MIME: {mime_type}")
+        logging.info(f"File received: {file.filename} | MIME: {mime_type} | User: {user}")
 
         # Scan the file
         infected, virus_name = scan_file(file_location)
 
-        # Create Scan result
-        scan_result = Scan(
+        # Build response
+        return Scan(
             time=time.strftime("%Y-%m-%d %H:%M:%S"),
             is_infected=infected,
             infected_by=virus_name
         )
 
-        return scan_result
-
     finally:
-        # Ensure file is always deleted
+        # Always delete temporary file
         if os.path.exists(file_location):
             os.remove(file_location)
