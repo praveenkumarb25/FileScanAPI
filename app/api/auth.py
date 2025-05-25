@@ -9,7 +9,6 @@ from fastapi import Request
 
 router = APIRouter()
 ACCESS_TOKEN_EXPIRE_MINUTES = 10
-
 @router.post("/token", response_model=TokenResponse)
 @limiter.limit("5/minute")  # Rate limiting
 async def login(login_data: dict, request: Request) -> TokenResponse:
@@ -22,25 +21,42 @@ async def login(login_data: dict, request: Request) -> TokenResponse:
             detail=", ".join(error_messages)
         )
 
-    # 🔄 Actual DB lookup
-    user = get_user_from_db(login.username)
-    if user is None or not verify_password(login.password, user["password"]):
+    # 🔄 Actual DB lookup for the requesting user (admin)
+    admin_user = get_user_from_db(login.username)
+    if admin_user is None or not verify_password(login.password, admin_user["password"]):
         update_token_metadata(login.username, success=False)  # ⛔ On failure
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
 
-    user_roles = user.get("roles", [])
-    if "admin" not in user_roles:
+    admin_roles = admin_user.get("roles", [])
+
+    # 🔒 Ensure only admins can generate tokens
+    if "admin" not in admin_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins are allowed to create tokens"
+            detail="Only admins are allowed to generate tokens"
         )
 
-    # ✅ Generate access token
+    # 🔄 Lookup the target user (specified by the admin)
+    target_user = login_data.get("target_user")
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target user must be specified"
+        )
+
+    target_user_data = get_user_from_db(target_user)
+    if target_user_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Target user '{target_user}' not found"
+        )
+
+    # ✅ Generate access token for the target user
     access_token, expires_in_minutes = create_access_token(
-        data={"sub": login.username, "roles": user_roles},
+        data={"sub": target_user, "roles": target_user_data.get("roles", [])},
         duration=login.duration
     )
 
@@ -48,7 +64,7 @@ async def login(login_data: dict, request: Request) -> TokenResponse:
     expire_time = (datetime.utcnow() + timedelta(minutes=expires_in_minutes)).isoformat()
 
     # ✅ Update token metadata in DynamoDB
-    update_token_metadata(login.username, success=True, expire_time=expire_time)
+    update_token_metadata(target_user, success=True, expire_time=expire_time)
 
     return {
         "token_type": "bearer",
