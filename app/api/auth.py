@@ -2,16 +2,26 @@ from fastapi import APIRouter, HTTPException, status
 from app.core.security import create_access_token, verify_password
 from app.models import Login, TokenResponse
 from pydantic import ValidationError
-from app.core.config import get_user_from_db, update_token_metadata  # ✅ Add update function
+from app.core.config import get_user_from_db, update_token_metadata, get_user_by_email  # ✅ Add update function
 from datetime import datetime, timedelta
 from app.core.utils import limiter
 from fastapi import Request 
+import logging
 
 router = APIRouter()
 ACCESS_TOKEN_EXPIRE_MINUTES = 10
 @router.post("/token", response_model=TokenResponse)
 @limiter.limit("5/minute")  # Rate limiting
 async def login(login_data: dict, request: Request) -> TokenResponse:
+    required_fields = Login.schema()["required"]
+    missing_fields = [field for field in required_fields if field not in login_data]
+
+    if missing_fields:
+        logging.error(f"Missing required fields: {', '.join(missing_fields)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Missing required fields: {', '.join(missing_fields)}"
+        )
     try:
         login = Login(**login_data)
     except ValidationError as e:
@@ -20,6 +30,35 @@ async def login(login_data: dict, request: Request) -> TokenResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=", ".join(error_messages)
         )
+    email = login_data.get("email")
+    username = login_data.get("target_user")
+
+    if not email:
+        raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Email must be provided"
+    )
+
+    if not username:
+        raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Username must be provided"
+    )
+
+    # 🔄 Lookup user by email
+    user = get_user_by_email(email)
+    if user is None:
+        raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"User with email '{email}' not found"
+    )
+
+    # 🔄 Verify that the email is associated with the username
+    if user["username"] != username:
+        raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"The email '{email}' is not associated with the username '{username}'"
+    ) 
 
     # 🔄 Actual DB lookup for the requesting user (admin)
     admin_user = get_user_from_db(login.username)
@@ -56,7 +95,7 @@ async def login(login_data: dict, request: Request) -> TokenResponse:
 
     # ✅ Generate access token for the target user
     access_token, expires_in_minutes = create_access_token(
-        data={"sub": target_user, "roles": target_user_data.get("roles", [])},
+        data={"sub": target_user, "roles": target_user_data.get("roles", []), "email": email},
         duration=login.duration
     )
 

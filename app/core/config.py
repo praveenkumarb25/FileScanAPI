@@ -33,6 +33,19 @@ def get_user_from_db(username: str):
     )
     items = response.get("Items", [])
     return items[0] if items else None
+
+def get_user_by_email(email: str):
+    """
+    Fetches a user from the DynamoDB table using their email.
+    """
+    response = table.scan(
+        FilterExpression="email = :e",
+        ExpressionAttributeValues={":e": email}
+    )
+    items = response.get("Items", [])
+    return items[0] if items else None
+
+
 def update_token_metadata(username: str, success: bool, expire_time: str = ""):
     user = get_user_from_db(username)
     if not user:

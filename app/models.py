@@ -39,6 +39,8 @@ class Login(BaseModel):
     username: str
     password: str
     duration: str  # e.g., '30m' or '1h'
+    target_user: str
+    email: str
 
 
 # Model used to represent a scan record

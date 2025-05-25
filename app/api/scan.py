@@ -3,6 +3,7 @@ from typing import List
 from app.core.security import get_current_user
 from app.models import Scan
 from app.core.utils import limiter
+from app.core.config import get_user_by_email
 
 import os
 import subprocess
@@ -70,13 +71,20 @@ def scan_file(file_path: str) -> tuple[bool, str]:
 async def scan_file_endpoint(
     request: Request,
     files: List[UploadFile] = File(...),
-    user: str = Depends(get_current_user)
+    user: str = Depends(get_current_user),
+    email: str = Depends(get_user_by_email)
 ) -> List[Scan]:
     """
     Endpoint to scan uploaded files.
     Supports multiple files of any type.
     """
-    responses = []
+    if not user or not email:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Too many files uploaded. Max 10 allowed.")
+    responses = []  
 
     for file in files:
         unique_id = uuid.uuid4().hex
