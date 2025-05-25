@@ -32,7 +32,7 @@ async def login(login_data: dict, request: Request) -> TokenResponse:
         )
 
     user_roles = user.get("roles", [])
-    if "admin" in user_roles:
+    if "admin" not in user_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins are allowed to create tokens"
