@@ -3,6 +3,7 @@ import time
 import logging
 import boto3
 import json
+import magic
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -98,13 +99,19 @@ def redact_sensitive(data):
     else:
         return data
 
+def try_decode_utf8(body_bytes):
+    try:
+        return body_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         print("🛡️ LoggingMiddleware triggered")
         start_time = time.time()
 
         body = await request.body()
-        request_body = body.decode("utf-8") if body else None
+        content_type = request.headers.get("content-type", "").lower()
 
         async def receive():
             return {"type": "http.request", "body": body}
@@ -115,7 +122,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         response_body = b""
         async for chunk in response.body_iterator:
             response_body += chunk
-        response_content = response_body.decode("utf-8") if response_body else None
 
         final_response = Response(
             content=response_body,
@@ -124,29 +130,41 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             media_type=response.media_type
         )
 
-        # Redact sensitive headers
+        file_type_info = None
+        if body and ("multipart/form-data" in content_type or "application/octet-stream" in content_type):
+            try:
+                file_type_info = magic.from_buffer(body[:2048])
+            except Exception as e:
+                file_type_info = f"Error detecting file type: {e}"
+
         headers = {
             k: ("***REDACTED***" if k.lower() in SENSITIVE_KEYS else v)
             for k, v in dict(request.headers).items()
         }
 
-        # Redact sensitive body
-        content_type = request.headers.get("content-type", "")
-        if "multipart/form-data" in content_type:
-            redacted_request = "***REDACTED MULTIPART FORM DATA***"
+        if "multipart/form-data" in content_type or "application/octet-stream" in content_type:
+            redacted_request = {
+                "raw_length": len(body),
+                "detected_file_type": file_type_info or "Unknown binary file",
+                "content_type": content_type,
+                "note": "***Binary or multipart data redacted***"
+            }
         else:
-            try:
-                parsed_request = json.loads(request_body) if request_body else None
-                redacted_request = redact_sensitive(parsed_request)
-            except Exception:
-                redacted_request = request_body
+            request_body_str = try_decode_utf8(body)
+            if request_body_str:
+                try:
+                    parsed_request = json.loads(request_body_str)
+                    redacted_request = redact_sensitive(parsed_request)
+                except json.JSONDecodeError:
+                    redacted_request = request_body_str
+            else:
+                redacted_request = "***Non-UTF8 or binary data***"
 
-        # Redact sensitive response body
         try:
-            parsed_response = json.loads(response_content) if response_content else None
+            parsed_response = json.loads(response_body.decode("utf-8"))
             redacted_response = redact_sensitive(parsed_response)
         except Exception:
-            redacted_response = response_content
+            redacted_response = "***Binary or non-UTF8 response***"
 
         log_details = {
             "method": request.method,
@@ -171,6 +189,7 @@ app.add_middleware(SlowAPIMiddleware)
 # Include all API routers
 from app.api.routes import router as api_router
 app.include_router(api_router)
+
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
