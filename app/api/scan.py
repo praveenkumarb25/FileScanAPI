@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Request
+from typing import List
 from app.core.security import get_current_user
 from app.models import Scan
 from app.core.utils import limiter
@@ -64,42 +65,47 @@ def scan_file(file_path: str) -> tuple[bool, str]:
         logging.error(f"Scanning error: {e}")
         raise HTTPException(status_code=500, detail=f"Error scanning file: {str(e)}")
 
-@router.post("/", response_model=Scan)
+@router.post("/", response_model=List[Scan])
 @limiter.limit("5/minute")
 async def scan_file_endpoint(
     request: Request,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     user: str = Depends(get_current_user)
-) -> Scan:
+) -> List[Scan]:
     """
     Endpoint to scan uploaded files.
-    Supports all file types.
+    Supports multiple files of any type.
     """
-    unique_id = uuid.uuid4().hex
-    safe_filename = f"{unique_id}_{file.filename}"
-    file_location = os.path.join("/tmp", safe_filename)
+    responses = []
 
-    try:
-        # Save uploaded file to disk
-        with open(file_location, "wb") as f:
-            f.write(await file.read())
+    for file in files:
+        unique_id = uuid.uuid4().hex
+        safe_filename = f"{unique_id}_{file.filename}"
+        file_location = os.path.join("/tmp", safe_filename)
 
-        # Detect MIME type
-        mime = magic.Magic(mime=True)
-        mime_type = mime.from_file(file_location)
-        logging.info(f"File received: {file.filename} | MIME: {mime_type} | User: {user}")
+        try:
+            # Save uploaded file
+            with open(file_location, "wb") as f:
+                f.write(await file.read())
 
-        # Scan the file
-        infected, virus_name = scan_file(file_location)
+            # Detect MIME type
+            mime = magic.Magic(mime=True)
+            mime_type = mime.from_file(file_location)
+            logging.info(f"File received: {file.filename} | MIME: {mime_type} | User: {user.username}")
 
-        # Build response
-        return Scan(
-            time=time.strftime("%Y-%m-%d %H:%M:%S"),
-            is_infected=infected,
-            infected_by=virus_name
-        )
+            # Scan the file
+            infected, virus_name = scan_file(file_location)
 
-    finally:
-        # Always delete temporary file
-        if os.path.exists(file_location):
-            os.remove(file_location)
+            # Append response
+            responses.append(Scan(
+                time=time.strftime("%Y-%m-%d %H:%M:%S"),
+                is_infected=infected,
+                infected_by=virus_name
+            ))
+
+        finally:
+            # Always clean up
+            if os.path.exists(file_location):
+                os.remove(file_location)
+
+    return responses
