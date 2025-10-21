@@ -14,9 +14,9 @@ load_dotenv(dotenv_path="app/.env")
 # AWS setup
 dynamodb = boto3.resource(
     'dynamodb',
-    region_name=os.getenv("AWS_REGION"),  # Default to 'us-east-1' if not set
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),  # Default to 'your_access_key_id' if not set
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")  # Default to 'your_secret_access_key' if not set
+    region_name="region",
+    aws_access_key_id="id",
+    aws_secret_access_key="key"
 )
 users = os.getenv("DYNAMODB_USERS_TABLE")  # Default to 'users' if not set
 table = dynamodb.Table(users)
