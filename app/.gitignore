@@ -4,4 +4,6 @@ __pycache__
 /app/api/logs
 /app/core/__pycache__
 file_changes.log
-/app/core/.env
+.env
+/app/logs
+/logs
